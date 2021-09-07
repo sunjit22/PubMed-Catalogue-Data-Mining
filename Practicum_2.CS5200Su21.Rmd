@@ -1,0 +1,1979 @@
+---
+title: "Practicum2.CS5200Su21"
+output:
+  html_document:
+    df_print: paged
+---
+
+Authors:
+Sunjit Dhillon [dhillon.su@northeastern.edu]
+MManzur Morshed [morshed.mm@northeastern.edu]
+
+#Part1 Q1:
+# ERD Link
+https://lucid.app/lucidchart/f33caea1-b422-42a8-9df6-1c44fdd7e24c/edit?invitationId=inv_1a981c70-a61d-471a-827a-0388f1946d43
+
+
+#ERD image
+![ERD Part1 Ques1](/Users/mmorshed/Desktop/erd1.png)
+
+
+#Part1 Q2:
+# Creating SQLite DB
+# Creating all the tables from ERD above
+
+```{r}
+library(RSQLite)
+library(dplyr)
+library(sqldf)
+library(XML)
+library(ggplot2)
+
+fpath = "/Users/sunjitdhillon/Desktop/"
+dbfile = "pubmedDB.db"
+dbcon <- dbConnect(RSQLite::SQLite(), paste0(fpath,dbfile))
+```
+
+```{sql connection=dbcon}
+PRAGMA foreign_keys = ON
+
+```
+
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS Journal_Issue
+
+```
+
+```{sql connection=dbcon}
+CREATE TABLE Journal_Issue(
+journal_iss_id INTEGER NOT NULL,
+cited_medium TEXT,
+volume INTEGER,
+issue INTEGER,
+year TEXT,
+month TEXT,
+day TEXT,
+PRIMARY KEY (journal_iss_id)
+)
+
+```
+
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS Journal;
+
+```
+
+
+```{sql connection=dbcon}
+CREATE TABLE Journal(
+journal_id INTEGER NOT NULL,
+issn_type TEXT,
+issn TEXT,
+title TEXT,
+iso_abbreviation TEXT,
+journal_iss_id INTEGER,
+PRIMARY KEY (journal_id),
+FOREIGN KEY (journal_iss_id) REFERENCES Journal_Issue(journal_iss_id) ON DELETE CASCADE
+)
+
+```
+
+
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS Author
+
+```
+
+```{sql connection=dbcon}
+CREATE TABLE Author (
+author_id INTEGER NOT NULL,
+last_name TEXT,
+fore_name TEXT,
+initials TEXT,
+affiliations TEXT,
+valid_yn TEXT,
+PRIMARY KEY (author_id)
+)
+
+```
+
+
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS Elocation_Id 
+
+```
+
+```{sql connection=dbcon}
+CREATE TABLE Elocation_Id (
+elocation_id INTEGER NOT NULL,
+eid_type TEXT,
+valid_yn TEXT,
+elocation_id_num TEXT,
+PRIMARY KEY (elocation_id)
+)
+
+```
+
+
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS Grant
+
+```
+
+```{sql connection=dbcon}
+CREATE TABLE Grant (
+grant_gid INTEGER NOT NULL,
+grant_id INTEGER,
+acronym TEXT,
+agency TEXT,
+country TEXT,
+PRIMARY KEY (grant_gid)
+)
+
+```
+
+
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS Article
+
+```
+
+```{sql connection=dbcon}
+CREATE TABLE Article(
+article_id INTEGER NOT NULL,
+pub_model TEXT,
+journal_id INTEGER,
+article_title TEXT,
+medline_pgn TEXT,
+language TEXT,
+article_date_type TEXT,
+article_date DATE,
+author_list_complete_yn TEXT,
+PRIMARY KEY (article_id),
+FOREIGN KEY (journal_id) references Journal(journal_id) ON DELETE CASCADE
+)
+
+```
+
+
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS Article_Elocation
+
+```
+
+```{sql connection=dbcon}
+CREATE TABLE Article_Elocation (
+article_elocation_id INTEGER NOT NULL,
+article_id INTEGER NOT NULL,
+elocation_id INTEGER NOT NULL,
+PRIMARY KEY (article_elocation_id),
+FOREIGN KEY (article_id) REFERENCES Article(article_id) ON DELETE CASCADE,
+FOREIGN KEY (elocation_id) REFERENCES Elocation_Id(elocation_id) ON DELETE CASCADE
+
+)
+
+```
+
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS Author_List
+
+```
+
+```{sql connection=dbcon}
+CREATE TABLE Author_List (
+author_list_id INTEGER NOT NULL,
+article_id INTEGER NOT NULL,
+author_id INTEGER NOT NULL,
+PRIMARY KEY (author_list_id),
+FOREIGN KEY (article_id) REFERENCES Article(article_id) ON DELETE CASCADE,
+FOREIGN KEY (author_id) REFERENCES Author(author_id) ON DELETE CASCADE
+)
+
+```
+
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS Grant_List
+
+```
+
+```{sql connection=dbcon}
+CREATE TABLE Grant_List (
+grant_list_id INTEGER NOT NULL,
+article_id INTEGER NOT NULL,
+grant_gid INTEGER NOT NULL,
+PRIMARY KEY (grant_list_id),
+FOREIGN KEY (article_id) REFERENCES Article(article_id) ON DELETE CASCADE,
+FOREIGN KEY (grant_gid) REFERENCES Grant(grant_gid) ON DELETE CASCADE
+)
+
+```
+
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS Abstract_Text
+
+```
+
+
+```{sql connection=dbcon}
+CREATE TABLE Abstract_Text (
+abstract_text_id INTEGER NOT NULL,
+label TEXT,
+category TEXT,
+abstract_text TEXT,
+article_id INTEGER NOT NULL,
+PRIMARY KEY (abstract_text_id),
+FOREIGN KEY (article_id) REFERENCES Article(article_id) ON DELETE CASCADE
+)
+
+```
+
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS History
+
+```
+
+```{sql connection=dbcon}
+CREATE TABLE History (
+history_id INTEGER NOT NULL,
+article_id INTEGER NOT NULL,
+pub_status TEXT,
+pub_date DATE,
+hour INTEGER,
+minute INTEGER,
+PRIMARY KEY (history_id),
+FOREIGN KEY (article_id) REFERENCES Article(article_id) ON DELETE CASCADE
+)
+
+```
+
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS Publication_Type
+
+```
+
+```{sql connection=dbcon}
+CREATE TABLE Publication_Type (
+publication_type_id INTEGER NOT NULL,
+publication_type TEXT,
+PRIMARY KEY (publication_type_id)
+)
+
+```
+
+
+```{sql connection=dbcon}
+DROP TABLE IF EXISTS Publication_Type_List
+
+```
+
+```{sql connection=dbcon}
+CREATE TABLE Publication_Type_List (
+publication_type_list_id INTEGER NOT NULL,
+publication_type_id INTEGER NOT NULL,
+article_id INTEGER NOT NULL,
+PRIMARY KEY (publication_type_list_id),
+FOREIGN KEY (publication_type_id) REFERENCES Publication_Type(publication_type_id) ON DELETE CASCADE,
+FOREIGN KEY (article_id) REFERENCES Article(article_id) ON DELETE CASCADE
+)
+
+```
+
+#Part1 Q3
+#Extracting and transforming the data from the XML and then loading into the appropriate tables in the database. 
+
+```{r}
+path <- "/Users/sunjitdhillon/Downloads/"
+fn <- "pubmed_sample.xml"
+fpn = paste0(path, fn)
+```
+
+```{r}
+# Reading the XML file and parse into DOM
+xmlDOM <- xmlParse(file = fpn)
+
+# get the root node of the DOM tree
+r <- xmlRoot(xmlDOM)
+
+# get number of children of root
+numPO <- xmlSize(r)
+numPO
+```
+
+```{r}
+# Creating Author.df for authors' data. Don't know how many unique authors are there, so not defining the size.
+Author.df <- data.frame (author_id = integer(),
+                          last_name = character(),
+                          fore_name = character(),
+                          initials = character(),
+                          affiliations = character(),
+                          valid_yn = character(),
+                          stringsAsFactors = F)
+```
+
+
+```{r}
+# Populating Author.df	
+
+xpathEx <- "/PubmedArticleSet/PubmedArticle/MedlineCitation/Article/AuthorList/Author"	
+
+authors <- xpathSApply(xmlDOM, xpathEx)
+
+id <- 0
+for (k in 1:length(authors)) {
+
+  current_author <- authors[[k]]
+  #Last Name
+  cur_value <- current_author[["LastName"]]
+  if (! is.null(cur_value)) {
+    temp <- xmlValue(cur_value)
+  } else {
+    temp <- NA
+  }
+  last_name <- temp
+  
+  #Fore Name
+  
+  cur_value <- current_author[["ForeName"]]
+  if (! is.null(cur_value)) {
+    temp <- xmlValue(cur_value)
+  } else {
+    temp <- NA
+  }
+  fore_name <- temp
+  
+  cur_value <- current_author[["Initials"]]
+  if (! is.null(cur_value)) {
+    temp <- xmlValue(cur_value)
+  } else {
+    temp <- NA
+  }
+  initials <- temp
+  
+  cur_value <- current_author[["Affiliation"]]
+  if (! is.null(cur_value)) {
+    temp <- xmlValue(cur_value)
+  } else {
+    temp <- NA
+  }
+  affiliations <- temp
+  
+  #cur_value <- xmlAttrs(current_author)
+  if (! is.null(current_author)) {
+    attr_list <- xmlAttrs(current_author)
+    temp <- xmlGetAttr(current_author, "ValidYN")
+  } else {
+    temp <- NA
+  }
+  valid_yn <- temp
+  
+  
+  # travel through existing data frame to see if this name already exists
+  duplicate <- 0
+  for (i in 1:nrow(Author.df)) {
+    
+    if (nrow(Author.df) < 2) {
+      break
+    }
+    
+    if (last_name == Author.df$last_name[i] && fore_name == Author.df$fore_name[i] && initials == Author.df$initials[i]) {
+      duplicate <- 1
+    }
+  }
+  
+  if(duplicate == 0) {
+  j <- nrow(Author.df)+1
+  
+  id <- id + 1
+  Author.df[j,1] <- id
+  Author.df[j,2] <- last_name
+  Author.df[j,3] <- fore_name
+  Author.df[j,4] <- initials
+  Author.df[j,5] <- affiliations
+  Author.df[j,6] <- valid_yn
+  }
+}
+
+
+head(Author.df)
+```
+
+```{r}
+# Creating Journalissue.df. Don't know how many unique journal issues are there, so not defining the size.
+Journalissue.df <- data.frame (journal_iss_id = integer(),
+                          cited_medium = character(),
+                          volume = integer(),
+                          issue = integer(),
+                          year = integer(),
+                          month = character(),
+                          day = character(),
+                          stringsAsFactors = F)
+```
+
+
+```{r}
+# Populating Journalissue.df
+xpathEx <- "/PubmedArticleSet/PubmedArticle/MedlineCitation/Article/Journal/JournalIssue"
+
+journal_issue <- xpathSApply(xmlDOM, xpathEx)
+#journal_issue
+
+id <- 0
+for (k in 1:length(journal_issue)) {
+  current_jissue <- journal_issue[[k]]
+  
+  if (! is.null(current_jissue)) {
+    attr_list <- xmlAttrs(current_jissue)
+    temp <- xmlGetAttr(current_jissue, "CitedMedium")
+  } else {
+    temp <- NA
+  }
+  cited_medium <- temp
+  
+  #Volume
+  cur_value <- current_jissue[["Volume"]]
+  if (! is.null(cur_value)) {
+    temp <- xmlValue(cur_value)
+  } else {
+    temp <- NA
+  }
+  volume <- temp
+  
+  #Issue
+  cur_value <- current_jissue[["Issue"]]
+  if (! is.null(cur_value)) {
+    temp <- xmlValue(cur_value)
+  } else {
+    temp <- NA
+  }
+  issue <- temp
+  
+  #Year
+  cur_value <- current_jissue[["PubDate"]]
+  if (! is.null(cur_value)) {
+  cur_year <- cur_value[["Year"]]
+  if (! is.null(cur_year)) {
+    temp <- xmlValue(cur_year)
+  } else {
+    temp <- NA
+  }
+  year <- temp
+  
+  #Month
+  cur_month <- cur_value[["Month"]]
+  if (! is.null(cur_month)) {
+    temp <- xmlValue(cur_month)
+  } else {
+    temp <- NA
+  }
+  month <- temp
+  
+  #Day
+  cur_day <- cur_value[["Day"]]
+  if (! is.null(cur_day)) {
+    temp <- xmlValue(cur_day)
+  } else {
+    temp <- NA
+  }
+  day <- temp
+  } else {
+    year <- NA
+    month <- NA
+    day <- NA
+  }
+  
+
+  cur_medline_date <-  cur_value[["MedlineDate"]]
+  if(! is.null(cur_medline_date)) {
+    medline_date <- xmlValue(cur_medline_date)
+    split_date <- strsplit(medline_date, " ")[[1]]
+    year <- split_date[1]
+    split_months <- strsplit(split_date[2:3], "-")[[1]]
+    month <- split_months[1]
+  } 
+  
+  
+  # travel through existing data frame to see if this name already exists
+  duplicate <- 0
+  for (i in 1:nrow(Journalissue.df)) {
+    
+    if (nrow(Journalissue.df) < 2) {
+      break
+    }
+    # checking 
+    if (cited_medium == Journalissue.df$cited_medium[i] && volume == Journalissue.df$volume[i] && issue == Journalissue.df$issue[i]    && year == Journalissue.df$year && month == Journalissue.df$month && day == Journalissue.df$day) {
+      duplicate <- 1
+    }
+  }
+  
+  if(duplicate == 0) {
+  j <- nrow(Journalissue.df)+1
+  
+  id <- id + 1
+  Journalissue.df[j,1] <- id
+  Journalissue.df[j,2] <- cited_medium
+  Journalissue.df[j,3] <- volume
+  Journalissue.df[j,4] <- issue
+  Journalissue.df[j,5] <- year
+  Journalissue.df[j,6] <- month
+  Journalissue.df[j,7] <- day
+  }
+  
+  
+}
+
+Journalissue.df
+```
+
+```{r}
+# Creating Journal.df.
+Journal.df <- data.frame (journal_id = integer(),
+                          issn_type = character(),
+                          issn = character(),
+                          title = character(),
+                          iso_abbreviation = character(),
+                          journal_iss_id = integer(),
+                          stringsAsFactors = F)
+```
+
+```{r}
+# Populating Journal.df
+xpathEx <- "/PubmedArticleSet/PubmedArticle/MedlineCitation/Article/Journal"
+
+journal <- xpathSApply(xmlDOM, xpathEx)
+#journal
+
+id <- 0
+for (k in 1:length(journal)) {
+  current_journal <- journal[[k]]
+  
+  cur_value <- current_journal[["ISSN"]]
+  if (! is.null(cur_value)) {
+    attr_list <- xmlAttrs(cur_value)
+    temp <- xmlGetAttr(cur_value, "IssnType")
+  } else {
+    temp <- NA
+  }
+  issn_type <- temp
+  
+  #issn
+  if (! is.null(cur_value)) {
+    temp <- xmlValue(cur_value)
+  } else {
+    temp <- NA
+  }
+  issn <- temp
+  
+  #title
+  cur_value <- current_journal[["Title"]]
+  if (! is.null(cur_value)) {
+    temp <- xmlValue(cur_value)
+  } else {
+    temp <- NA
+  }
+  title <- temp
+  
+  #iso_abbreviation
+  cur_value <- current_journal[["ISOAbbreviation"]]
+  if (! is.null(cur_value)) {
+    temp <- xmlValue(cur_value)
+  } else {
+    temp <- NA
+  }
+  iso_abbreviation <- temp
+  
+  journal_iss_id <- NA
+  
+  # Find journal_iss_id
+  current_jissue <- current_journal[["JournalIssue"]]
+  for (j in 1:nrow(Journalissue.df)) {
+    
+    #
+    if (! is.null(current_jissue)) {
+    attr_list <- xmlAttrs(current_jissue)
+    temp <- xmlGetAttr(current_jissue, "CitedMedium")
+  } else {
+    temp <- NA
+  }
+  cited_medium <- temp
+  
+  #Volume
+  cur_value <- current_jissue[["Volume"]]
+  if (! is.null(cur_value)) {
+    temp <- xmlValue(cur_value)
+  } else {
+    temp <- NA
+  }
+  volume <- temp
+  
+  #Issue
+  cur_value <- current_jissue[["Issue"]]
+  if (! is.null(cur_value)) {
+    temp <- xmlValue(cur_value)
+  } else {
+    temp <- NA
+  }
+  issue <- temp
+  
+  #Year
+  cur_value <- current_jissue[["PubDate"]]
+  if (! is.null(cur_value)) {
+  cur_year <- cur_value[["Year"]]
+  if (! is.null(cur_year)) {
+    temp <- xmlValue(cur_year)
+  } else {
+    temp <- NA
+  }
+  year <- temp
+  
+  #Month
+  cur_month <- cur_value[["Month"]]
+  if (! is.null(cur_month)) {
+    temp <- xmlValue(cur_month)
+  } else {
+    temp <- NA
+  }
+  month <- temp
+  
+  #Day
+  cur_day <- cur_value[["Day"]]
+  if (! is.null(cur_day)) {
+    temp <- xmlValue(cur_day)
+  } else {
+    temp <- NA
+  }
+  day <- temp
+  } else {
+    year <- NA
+    month <- NA
+    day <- NA
+  }
+    
+    #
+    
+    if (cited_medium == Journalissue.df$cited_medium[j] && volume == Journalissue.df$volume[j] && issue == Journalissue.df$issue[j])
+      {
+      journal_iss_id <- Journalissue.df$journal_iss_id[j]
+      
+    }
+  
+    
+  }
+  
+  #Check if Journal entry already present
+  # travel through existing data frame to see if this name already exists
+  duplicate <- 0
+  for (i in 1:nrow(Journal.df)) {
+    
+    if (nrow(Journal.df) < 2) {
+      break
+    }
+    # checking 
+    if (issn_type == Journal.df$issn_type[i] && issn == Journal.df$issn[i] && title == Journal.df$title[i]  && iso_abbreviation == Journal.df$iso_abbreviation && journal_iss_id == Journal.df$journal_iss_id) {
+      duplicate <- 1
+    }
+  }
+  
+  if(duplicate == 0) {
+  j <- nrow(Journalissue.df)+1
+  
+  id <- id + 1
+  Journal.df[k,1] <- id
+  Journal.df[k,2] <- issn_type
+  Journal.df[k,3] <- issn
+  Journal.df[k,4] <- title
+  Journal.df[k,5] <- iso_abbreviation
+  Journal.df[k,6] <- journal_iss_id
+  }
+}
+
+
+
+Journal.df
+```
+
+
+```{r}
+# Creating Elocation.df.
+Elocation_Id.df <- data.frame (elocation_id = integer(),
+                          eid_type = character(),
+                          valid_yn = character(),
+                          elocation_id_num = character(),
+                          stringsAsFactors = F)
+```
+
+```{r}
+# Populating Elocation.df
+xpathEx <- "/PubmedArticleSet/PubmedArticle/MedlineCitation/Article/ELocationID"
+
+elocation <- xpathSApply(xmlDOM, xpathEx)
+#elocation
+
+id <- 0
+for (k in 1:length(elocation)) {
+  current_elocation <- elocation[[k]]
+  
+  if (! is.null(current_elocation)) {
+    attr_list <- xmlAttrs(current_elocation)
+    temp <- xmlGetAttr(current_elocation, "EIdType")
+  } else {
+    temp <- NA
+  }
+  eid_type <- temp
+  
+  if (! is.null(current_elocation)) {
+    attr_list <- xmlAttrs(current_elocation)
+    temp <- xmlGetAttr(current_elocation, "ValidYN")
+  } else {
+    temp <- NA
+  }
+  valid_yn <- temp
+  
+  #elocation_id_num
+  #cur_value <- current_jissue[["Volume"]]
+  if (! is.null(current_elocation)) {
+    temp <- xmlValue(current_elocation)
+  } else {
+    temp <- NA
+  }
+  elocation_id_num <- temp
+  
+  
+  
+  
+  # travel through existing data frame to see if this name already exists
+  duplicate <- 0
+  for (i in 1:nrow(Elocation_Id.df)) {
+    
+    if (nrow(Elocation_Id.df) < 2) {
+      break
+    }
+    # checking 
+    if (eid_type == Elocation_Id.df$eid_type[i] && valid_yn == Elocation_Id.df$valid_yn[i] && elocation_id_num ==  Elocation_Id.df$elocation_id_num[i]) {
+      duplicate <- 1
+    }
+  }
+  
+  if(duplicate == 0) {
+  j <- nrow(Elocation_Id.df)+1
+  
+  id <- id + 1
+  Elocation_Id.df[j,1] <- id
+  Elocation_Id.df[j,2] <- eid_type
+  Elocation_Id.df[j,3] <- valid_yn
+  Elocation_Id.df[j,4] <- elocation_id_num
+  }
+  
+}
+
+
+Elocation_Id.df
+```
+
+
+```{r}
+# Creating Publication_Type.df
+Publication_Type.df <- data.frame (publication_type_id = integer(),
+                          publication_type = character(),
+                          stringsAsFactors = F)
+```
+
+
+```{r}
+# Populating Publication_Type.df
+xpathEx <- "/PubmedArticleSet/PubmedArticle/MedlineCitation/Article"
+article <- xpathSApply(xmlDOM, xpathEx)
+
+
+id <- 0
+for (k in 1:length(article)) {
+  current_article <- article[[k]]
+  publication_type_list <- current_article[["PublicationTypeList"]]
+  if (! is.null(publication_type_list)) {
+  
+  j <- 0
+  while (TRUE) {
+    j <- j + 1
+    current_publication_type <- publication_type_list[[j]]
+    if (is.null(current_publication_type)) {
+      break
+    }
+    
+    publication_type <- xmlValue(current_publication_type)
+    
+    # travel through existing data frame to see if this name already exists
+  duplicate <- 0
+  for (i in 1:nrow(Publication_Type.df)) {
+    
+    if (nrow(Publication_Type.df) < 2) {
+      break
+    }
+    
+    if (publication_type == Publication_Type.df$publication_type[i]) {
+      duplicate <- 1
+    }
+  }
+    
+    if (duplicate == 0) {
+    id <- id + 1 
+    Publication_Type.df[id,1] <- id
+    Publication_Type.df[id,2] <- publication_type
+    }
+  }
+  
+  }
+}
+
+Publication_Type.df
+```
+
+
+
+```{r}
+# Creating Grant.df
+Grant.df <- data.frame (grant_gid = integer(),
+                          grant_id = character(),
+                          acronym = character(),
+                          agency = character(),
+                          country = character(),
+                          stringsAsFactors = F)
+```
+
+
+```{r}
+# Populating Grant.df
+xpathEx <- "/PubmedArticleSet/PubmedArticle/MedlineCitation/Article"
+article <- xpathSApply(xmlDOM, xpathEx)
+
+
+id <- 0
+for (k in 1:length(article)) {
+  current_article <- article[[k]]
+  grant_list <- current_article[["GrantList"]]
+  if (! is.null(grant_list)) {
+  
+  j <- 0
+  while (TRUE) {
+    j <- j + 1
+    current_grant <- grant_list[[j]]
+    if (is.null(current_grant)) {
+      break
+    }
+    
+    grant_id <- xmlValue(current_grant[["GrantID"]])
+    acronym <- xmlValue(current_grant[["Acronym"]])
+    agency <- xmlValue(current_grant[["Agency"]])
+    country <- xmlValue(current_grant[["Country"]])
+    
+    # travel through existing data frame to see if this name already exists
+  duplicate <- 0
+  for (i in 1:nrow(Grant.df)) {
+    
+    if (nrow(Grant.df) < 2) {
+      break
+    }
+    
+    if (grant_id == Grant.df$grant_id[i] && agency == Grant.df$agency[i] && country == Grant.df$country[i]) {
+      duplicate <- 1
+    }
+  }
+    
+    if (duplicate == 0) {
+    id <- id + 1 
+    Grant.df[id,1] <- id
+    Grant.df[id,2] <- grant_id
+    Grant.df[id,3] <- acronym
+    Grant.df[id,4] <- agency
+    Grant.df[id,5] <- country
+    }
+  }
+  
+  }
+}
+
+Grant.df
+```
+
+
+```{r}
+# Creating Article.df.
+Article.df <- data.frame (article_id = integer(),
+                          pub_model = character(),
+                          journal_id = integer(),
+                          article_title = character(),
+                          medline_pgn = character(),
+                          language = character(),
+                          article_date_type = character(),
+                          article_date = character(),
+                          author_list_complete_yn = character(),
+                          stringsAsFactors = F)
+```
+
+
+```{r}
+# Populating Article.df
+xpathEx <- "/PubmedArticleSet/PubmedArticle/MedlineCitation/Article"
+
+article <- xpathSApply(xmlDOM, xpathEx)
+
+
+id <- 0
+for (k in 1:length(article)) {
+  current_article <- article[[k]]
+  
+  pub_model <- xmlGetAttr(current_article, "PubModel")
+  
+  cur_value <- current_article[["ArticleTitle"]]
+  if (! is.null(cur_value)) {
+    temp <- xmlValue(cur_value)
+  } else {
+    temp <- NA
+  }
+  article_title <- temp
+  
+  
+  cur_value <- current_article[["Pagination"]]
+  cur_value <- cur_value[["MedlinePgn"]]
+  if (! is.null(cur_value)) {
+    temp <- xmlValue(cur_value)
+  } else {
+    temp <- NA
+  }
+  medline_pgn <- temp
+  
+  cur_value <- current_article[["Language"]]
+  if (! is.null(cur_value)) {
+    temp <- xmlValue(cur_value)
+  } else {
+    temp <- NA
+  }
+  language <- temp
+  
+  #article date type
+  cur_value <- current_article[["ArticleDate"]]
+  if (! is.null(cur_value)) {
+    temp <- xmlGetAttr(cur_value, "DateType")
+  } else {
+    temp <- NA
+  }
+  article_date_type <- temp
+  
+  #article date
+  cur_value <- current_article[["ArticleDate"]]
+  if (! is.null(cur_value)) {
+  year <- xmlValue(cur_value[["Year"]])
+  month <- xmlValue(cur_value[["Month"]])
+  day <- xmlValue(cur_value[["Day"]])
+  
+  article_date <- paste0(year,sep = "-",month,sep = "-",day)
+  } else {
+    article_date <- NA
+  }
+  
+  
+  #author_list_complete_yn
+  cur_value <- current_article[["AuthorList"]]	
+  if (! is.null(cur_value)) {	
+    temp <- xmlGetAttr(cur_value, "CompleteYN")	
+  } else {	
+    temp <- NA	
+  }	
+  author_list_complete_yn <- temp	
+  	
+  
+  
+  # finding journal_id
+  current_journal <- current_article[["Journal"]]
+  issn <- xmlValue(current_journal[["ISSN"]])
+  journal_issue <- current_journal[["JournalIssue"]]
+  volume <- xmlValue(journal_issue[["Volume"]])
+  issue <- xmlValue(journal_issue[["Issue"]])
+  
+  for (j in 1:nrow(Journal.df)) {
+    if (issn == Journal.df$issn[j]) {
+      idx <- Journal.df$journal_iss_id[j]
+      if (volume == Journalissue.df$volume[idx] && issue == Journalissue.df$issue[idx]) {
+        journal_id <- j
+        break
+      }
+      
+    }
+    
+  }
+
+  
+  id <- id + 1
+  Article.df[k,1] <- id
+  Article.df[k,2] <- pub_model
+  Article.df[k,3] <- journal_id
+  Article.df[k,4] <- article_title
+  Article.df[k,5] <- medline_pgn
+  Article.df[k,6] <- language
+  Article.df[k,7] <- article_date_type
+  Article.df[k,8] <- article_date
+  Article.df[k,9] <- author_list_complete_yn
+
+}
+
+Article.df
+```
+
+
+```{r}
+# Creating Author_list.df.
+Author_list.df <- data.frame (author_list_id = integer(),
+                          article_id = integer(),
+                          author_id = integer(),
+                          stringsAsFactors = F)
+```
+
+
+```{r}
+# Populating Author_list.df
+xpathEx <- "/PubmedArticleSet/PubmedArticle/MedlineCitation/Article"
+article <- xpathSApply(xmlDOM, xpathEx)
+
+
+id <- 0
+for (k in 1:length(article)) {
+  current_article <- article[[k]]
+  author_list <- current_article[["AuthorList"]]
+  
+  j <- 0
+  while (TRUE) {
+    j <- j + 1
+    current_author <- author_list[[j]]
+    if (is.null(current_author)) {
+      break
+    }
+    for (i in 1:nrow(Author.df)) {
+      if (xmlValue(current_author[["LastName"]]) == Author.df$last_name[i] && xmlValue(current_author[["ForeName"]]) == Author.df$fore_name[i] && xmlValue(current_author[["Initials"]]) == Author.df$initials[i]) {
+        found_author_id <- Author.df$author_id[i]
+        break
+      }
+      
+    }
+    id <- id + 1
+    Author_list.df[id,1] <- id
+    Author_list.df[id,2] <- k
+    Author_list.df[id,3] <- found_author_id
+    
+  }
+}
+
+Author_list.df
+```
+```{r}
+# Creating Grant_list.df.
+Grant_list.df <- data.frame (grant_list_id = integer(),
+                          article_id = integer(),
+                          grant_gid = integer(),
+                          stringsAsFactors = F)
+```
+
+
+
+```{r}
+# Populating Grant_list.df
+xpathEx <- "/PubmedArticleSet/PubmedArticle/MedlineCitation/Article"
+article <- xpathSApply(xmlDOM, xpathEx)
+
+
+id <- 0
+for (k in 1:length(article)) {
+  current_article <- article[[k]]
+  grant_list <- current_article[["GrantList"]]
+  j <- 0
+  while (TRUE) {
+    j <- j + 1
+    current_grant <- grant_list[[j]]
+    if (is.null(current_grant)) {
+      break
+    }
+    for (i in 1:nrow(Grant.df)) {
+      if (xmlValue(current_grant[["GrantID"]]) == Grant.df$grant_id[i]) {
+        found_grant_list_id <- Grant.df$grant_gid[i]
+        break
+      }
+      
+    }
+    id <- id + 1
+    Grant_list.df[id,1] <- id
+    Grant_list.df[id,2] <- k
+    Grant_list.df[id,3] <- found_grant_list_id
+    
+  } 
+}
+
+Grant_list.df
+```
+
+```{r}
+# Creating Article_Elocation.df.
+Article_Elocation.df <- data.frame (article_elocation_id = integer(),
+                          article_id = integer(),
+                          elocation_id = integer(),
+                          stringsAsFactors = F)
+```
+
+
+```{r}
+
+
+xpathEx <- "/PubmedArticleSet/PubmedArticle/MedlineCitation"
+article <- xpathSApply(xmlDOM, xpathEx)
+
+id <- 0
+for (k in 1:length(article)) {
+  current_article <- article[[k]]
+  elocation_id_list <- current_article[["Article"]]
+  # need to find multiple elocation
+  j <- 0
+  while (TRUE) {
+  # finding ElocationId
+  j <- j + 1
+    current_elocation_id <- elocation_id_list[[j]]
+    if (is.null(current_elocation_id)) {
+      break
+    }
+  if (xmlName(current_elocation_id) == "ELocationID" ) {
+ elocation_id_val <- xmlValue(current_elocation_id)
+  for (i in 1:nrow(Elocation_Id.df)) {
+    if (elocation_id_val == Elocation_Id.df$elocation_id_num[i]) {
+      found_elocation_id <- Elocation_Id.df$elocation_id[i]
+     break
+    }
+    
+  } 
+    id <- id + 1
+    Article_Elocation.df[id,1] <- id
+    Article_Elocation.df[id,2] <- k
+    Article_Elocation.df[id,3] <- found_elocation_id 
+   }
+  }
+}
+
+ 
+
+Article_Elocation.df
+```
+
+
+```{r}
+# Creating Publication_Type_List.df
+Publication_Type_List.df <- data.frame (publication_type_list_id = integer(),
+                          publication_type_id = integer(),
+                          article_id = integer(),
+                          stringsAsFactors = F)
+```
+
+
+```{r}
+# Populating Publication_Type_List.df
+xpathEx <- "/PubmedArticleSet/PubmedArticle/MedlineCitation/Article"
+article <- xpathSApply(xmlDOM, xpathEx)
+
+
+id <- 0
+for (k in 1:length(article)) {
+  current_article <- article[[k]]
+  publication_type_list <- current_article[["PublicationTypeList"]]
+  
+  j <- 0
+  while (TRUE) {
+    j <- j + 1
+    current_publication_type <- publication_type_list[[j]]
+    if (is.null(current_publication_type)) {
+      break
+    }
+    for (i in 1:nrow(Publication_Type.df)) {
+      if (xmlValue(current_publication_type) == Publication_Type.df$publication_type[i]) {
+        found_publication_type_id<- Publication_Type.df$publication_type_id[i]
+        break
+      }
+      
+    }
+    id <- id + 1
+    Publication_Type_List.df[id,1] <- id
+    Publication_Type_List.df[id,2] <- found_publication_type_id
+    Publication_Type_List.df[id,3] <- k
+    
+  }
+}
+
+Publication_Type_List.df
+```
+
+```{r}
+# Creating Abstract_text.df.
+Abstract_text.df <- data.frame (abstract_text_id = integer(),
+                          label = integer(),
+                          category = character(),
+                          article_id = integer(),
+                          abstract_text = character(),
+                          stringsAsFactors = F)
+```
+
+```{r}
+# Populating Abstract_text.df
+xpathEx <- "/PubmedArticleSet/PubmedArticle/MedlineCitation/Article"
+article <- xpathSApply(xmlDOM, xpathEx)
+
+
+id <- 0
+for (k in 1:length(article)) {
+  current_article <- article[[k]]
+  abstract_list <- current_article[["Abstract"]]
+  
+  j <- 0
+  while (TRUE) {
+    j <- j + 1
+    current_abstract <- abstract_list[[j]]
+    if (is.null(current_abstract)) {
+      break
+    }
+    
+    label <- xmlGetAttr(current_abstract, "Label")
+    if (is.null(label)) {
+      label <- NA
+    }
+    category <- xmlGetAttr(current_abstract, "NlmCategory")
+    if (is.null(category)) {
+      category <- NA
+    }
+    
+    if (xmlName(current_abstract) != "CopyrightInformation") {
+      
+    
+     id <- id + 1 
+    Abstract_text.df[id,1] <- id
+    Abstract_text.df[id,2] <- label
+    Abstract_text.df[id,3] <- category
+    Abstract_text.df[id,4] <- k
+    Abstract_text.df[id,5] <- xmlValue(current_abstract)
+    }
+    
+  }
+  
+}
+
+Abstract_text.df
+```
+
+
+```{r}
+# Creating History.df.
+History.df <- data.frame (history_id = integer(),
+                          article_id = integer(),
+                          pub_status = character(),
+                          pub_date = character(),
+                          hour = character(),
+                          minute = character(),
+                          stringsAsFactors = F)
+```
+
+
+
+```{r}
+# Populating History.df
+xpathEx <- "/PubmedArticleSet/PubmedArticle/PubmedData"
+pubmed_data <- xpathSApply(xmlDOM, xpathEx)
+
+
+id <- 0
+for (k in 1:length(pubmed_data)) {
+  current_data <- pubmed_data[[k]]
+  history_list <- current_data[["History"]]
+  
+  j <- 0
+  while (TRUE) {
+    j <- j + 1
+    current_history <- history_list[[j]]
+    if (is.null(current_history)) {
+      break
+    }
+    article_id <- k
+    pub_status <- xmlGetAttr(current_history,"PubStatus")
+    
+    year <- xmlValue(current_history[["Year"]])
+    month <- xmlValue(current_history[["Month"]])
+    day <- xmlValue(current_history[["Day"]])
+    pub_date <- paste0(year,sep = "-",month,sep = "-",day)
+    
+    hour <- xmlValue(current_history[["Hour"]])
+    
+    minute <- xmlValue(current_history[["Minute"]])
+    
+    id <- id + 1
+    History.df[id,1] <- id
+    History.df[id,2] <- article_id
+    History.df[id,3] <- pub_status
+    History.df[id,4] <- pub_date
+    History.df[id,5] <- hour
+    History.df[id,6] <- minute
+    
+  }
+  
+  
+}
+
+History.df
+```
+
+# Populating the tables in SQLite using data in dataframes
+# Showing the data populated by a SELECT statement
+
+```{r}
+dbWriteTable(dbcon, "author", Author.df, append = TRUE, 
+             row.names = FALSE)
+```
+
+
+```{sql connection=dbcon}
+SELECT * FROM author
+```
+
+```{r}
+dbWriteTable(dbcon, "Journal_Issue", Journalissue.df, append = TRUE, 
+             row.names = FALSE)
+```
+
+```{sql connection=dbcon}
+SELECT * FROM Journal_Issue
+```
+
+```{r}
+dbWriteTable(dbcon, "Journal", Journal.df, append = TRUE, 
+             row.names = FALSE)
+```
+
+```{sql connection=dbcon}
+SELECT * FROM Journal
+```
+
+```{r}
+dbWriteTable(dbcon, "Elocation_Id", Elocation_Id.df, append = TRUE, 
+             row.names = FALSE)
+```
+
+```{sql connection=dbcon}
+SELECT * FROM Elocation_Id
+```
+
+```{r}
+dbWriteTable(dbcon, "Article", Article.df, append = TRUE, 
+             row.names = FALSE)
+```
+
+```{sql connection=dbcon}
+SELECT * FROM Article
+```
+```{r}
+dbWriteTable(dbcon, "Author_List", Author_list.df, append = TRUE, 
+             row.names = FALSE)
+```
+
+```{sql connection=dbcon}
+SELECT * FROM Author_List
+```
+
+```{sql connection=dbcon}
+SELECT * FROM Author_List JOIN Journal ON Journal.journal_id = Author_List.article_id
+```
+
+```{r}
+dbWriteTable(dbcon, "History", History.df, append = TRUE, 
+             row.names = FALSE)
+```
+
+```{sql connection=dbcon}
+SELECT * FROM History
+```
+
+```{r}
+dbWriteTable(dbcon, "Abstract_Text", Abstract_text.df, append = TRUE, 
+             row.names = FALSE)
+```
+
+```{sql connection=dbcon}
+SELECT * FROM Abstract_Text
+```
+```{r}
+dbWriteTable(dbcon, "Grant", Grant.df, append = TRUE, row.names = FALSE)
+```
+
+```{sql connection=dbcon}
+SELECT * FROM Grant
+```
+
+```{r}
+dbWriteTable(dbcon, "Grant_List", Grant_list.df, append = TRUE, row.names = FALSE)
+```
+
+```{sql connection=dbcon}
+SELECT * FROM Grant_List
+```
+
+```{r}
+dbWriteTable(dbcon, "Publication_Type", Publication_Type.df, append = TRUE, 
+             row.names = FALSE)
+```
+
+```{sql connection=dbcon}
+SELECT * FROM Publication_Type
+```
+```{r}
+dbWriteTable(dbcon, "Publication_Type_List", Publication_Type_List.df, append = TRUE, 
+             row.names = FALSE)
+```
+
+```{sql connection=dbcon}
+SELECT * FROM Publication_Type_List
+```
+
+```{r}
+dbWriteTable(dbcon, "Article_Elocation", Article_Elocation.df, append = TRUE, 
+             row.names = FALSE)
+```
+
+```{sql connection=dbcon}
+SELECT * FROM Article_Elocation
+```
+
+```{r}
+dbDisconnect(dbcon)
+```
+
+
+# PART 2 Q1
+# Same ERD link from part 1 contains ERD for part 2 also
+https://lucid.app/lucidchart/f33caea1-b422-42a8-9df6-1c44fdd7e24c/edit?invitationId=inv_1a981c70-a61d-471a-827a-0388f1946d43
+
+
+#ERD image
+![ERD Part2 Ques1: Star Schema](/Users/mmorshed/Desktop/erd2.png)
+
+```{r}
+# Setup new connection for star schema
+fpath = "/Users/sunjitdhillon/Desktop/"
+dbfile = "pubmedDB.db"
+dbcon2 <- dbConnect(RSQLite::SQLite(), paste0(fpath,dbfile))
+```
+
+
+```{sql connection=dbcon2}
+PRAGMA foreign_keys = ON
+
+```
+
+# Creating tables from star schema
+
+```{sql connection=dbcon2}
+DROP TABLE IF EXISTS StarSchema_Journal;
+
+```
+
+```{sql connection=dbcon2}
+CREATE TABLE StarSchema_Journal(
+journal_id INTEGER NOT NULL,
+issn_type TEXT,
+issn TEXT,
+title TEXT,
+iso_abbreviation TEXT,
+cited_medium TEXT,
+volume INTEGER,
+issue INTEGER,
+PRIMARY KEY (journal_id)
+)
+
+```
+
+```{sql connection=dbcon2}
+DROP TABLE IF EXISTS StarSchema_Author
+
+```
+
+```{sql connection=dbcon2}
+CREATE TABLE StarSchema_Author (
+author_id INTEGER NOT NULL,
+last_name TEXT,
+fore_name TEXT,
+initials TEXT,
+affiliations TEXT,
+valid_yn TEXT,
+PRIMARY KEY (author_id)
+)
+
+```
+
+```{sql connection=dbcon2}
+DROP TABLE IF EXISTS StarSchema_Article
+
+```
+
+```{sql connection=dbcon2}
+CREATE TABLE StarSchema_Article(
+article_id INTEGER NOT NULL,
+pub_model TEXT,
+article_title TEXT,
+medline_pgn TEXT,
+language TEXT,
+article_date_type TEXT,
+article_date DATE,
+author_list_complete_yn TEXT,
+PRIMARY KEY (article_id)
+)
+
+```
+
+```{sql connection=dbcon2}
+DROP TABLE IF EXISTS StarSchema_Publication_Date
+
+```
+
+```{sql connection=dbcon2}
+CREATE TABLE StarSchema_Publication_Date(
+pub_date_id INTEGER NOT NULL,
+year INTEGER,
+month TEXT,
+day INTEGER,
+quarter TEXT,
+PRIMARY KEY (pub_date_id )
+)
+
+```
+
+```{sql connection=dbcon2}
+DROP TABLE IF EXISTS StarSchema_Article_Fact
+
+```
+
+
+```{sql connection=dbcon2}
+CREATE TABLE StarSchema_Article_Fact(
+article_index INTEGER NOT NULL,
+article_id INTEGER NOT NULL,
+journal_id INTEGER NOT NULL,
+author_id INTEGER NOT NULL,
+pub_date_id INTEGER NOT NULL,
+PRIMARY KEY (article_index),
+FOREIGN KEY (author_id) REFERENCES StarSchema_Author(author_id) ON DELETE CASCADE,
+FOREIGN KEY (journal_id) REFERENCES StarSchema_Journal(journal_id) ON DELETE CASCADE,
+FOREIGN KEY (article_id) REFERENCES StarSchema_Article(article_id) ON DELETE CASCADE,
+FOREIGN KEY (pub_date_id) REFERENCES StarSchema_Publication_Date(pub_date_id) ON DELETE CASCADE
+)
+
+```
+
+# Populating the data frames needed to execute start schema
+
+
+```{r}
+# Populating StarSchema_Journal.df
+StarSchema_Journal.df <- merge(Journal.df,subset(Journalissue.df, select = -c(year,month,day) ),by="journal_iss_id")
+StarSchema_Journal.df <- select(StarSchema_Journal.df,-c(journal_iss_id))
+StarSchema_Journal.df
+```
+
+```{r}
+# Populating Publication_Date.df
+StarSchema_Publication_Date.df <- data.frame(Journalissue.df$year, Journalissue.df$month, Journalissue.df$day)
+StarSchema_Publication_Date.df <- rename(StarSchema_Publication_Date.df, year = Journalissue.df.year, month = Journalissue.df.month,
+                                         day = Journalissue.df.day)
+pub_date_id <- seq_len(nrow(StarSchema_Publication_Date.df))
+StarSchema_Publication_Date.df <- cbind(pub_date_id, StarSchema_Publication_Date.df)
+```
+
+
+```{r}
+# Enhancing StarSchema_Publication_Date.df to have a row with per quarter articles 
+quarter1 <- c("Jan", "Feb", "Mar"); 
+quarter2 <- c("Apr", "May", "Jun"); 
+quarter3 <- c("Jul", "Aug", "Sep"); 
+quarter4 <- c("Oct", "Nov", "Dec"); 
+for(i in 1:nrow(StarSchema_Publication_Date.df)) {
+  if(StarSchema_Publication_Date.df$month[i] %in% quarter1){
+      StarSchema_Publication_Date.df$quarter[i] = "1" 
+  } else if (StarSchema_Publication_Date.df$month[i]  %in% quarter2) {
+    StarSchema_Publication_Date.df$quarter[i] = "2"
+  } else if (StarSchema_Publication_Date.df$month[i]  %in% quarter3) {
+    StarSchema_Publication_Date.df$quarter[i] = "3"
+  } else if (StarSchema_Publication_Date.df$month[i]  %in% quarter4) {
+    StarSchema_Publication_Date.df$quarter[i] = "4"
+  } else {
+    StarSchema_Publication_Date.df$quarter[i] = "-1"
+  }
+}  
+
+StarSchema_Publication_Date.df
+```
+
+```{r}
+# Creating StarSchema_Article.df
+StarSchema_Article.df <- data.frame (article_id = integer(),
+                          pub_model = character(),
+                          article_title = character(),
+                          medline_pgn = character(),
+                          language = character(),
+                          article_date_type = character(),
+                          article_date = character(),
+                          author_list_complete_yn = character(),
+                          stringsAsFactors = F)
+```
+
+
+
+```{r}
+# creating StartSchema_Article.df using Article.df
+StarSchema_Article.df <- select(Article.df,-c(journal_id))
+StarSchema_Article.df
+```
+
+
+```{r}
+# Create Article_Fact.df
+Article_Fact.df <- data.frame (article_index = integer(),
+                          article_id = integer(),
+                          journal_id = integer(),
+                          author_id = integer(),
+                          pub_date_id = integer(),
+                          stringsAsFactors = F)
+```
+
+
+```{r}
+# Populate Article_Fact.df
+id <- 0
+for (i in 1:nrow(Article.df)) {
+  journal_id <- Article.df$journal_id[i]
+  journal_iss_id <- Journal.df$journal_iss_id[journal_id]
+  for (j in 1:nrow(Author_list.df)) {
+    if (Author_list.df$article_id[j] == i) {
+      id <- id + 1
+      Article_Fact.df[id,1] <- id
+      Article_Fact.df[id,2] <- i
+      Article_Fact.df[id,3] <- journal_id
+      Article_Fact.df[id,4] <- Author_list.df$author_id[j]
+      Article_Fact.df[id,5] <- journal_iss_id
+    }
+    
+  }
+  
+}
+Article_Fact.df
+```
+
+# Populating the SQLite Tables with data from dataframes just created for start schema.
+
+```{r}
+dbWriteTable(dbcon2, "StarSchema_Author", Author.df, append = TRUE, 
+             row.names = FALSE)
+```
+
+
+```{r}
+dbWriteTable(dbcon2, "StarSchema_Publication_Date", StarSchema_Publication_Date.df, append = TRUE, 
+             row.names = FALSE)
+```
+
+```{r}
+dbWriteTable(dbcon2, "StarSchema_Journal", StarSchema_Journal.df, append = TRUE, 
+             row.names = FALSE)
+```
+
+
+```{r}
+dbWriteTable(dbcon2, "StarSchema_Article", StarSchema_Article.df, append = TRUE, 
+             row.names = FALSE)
+
+```
+
+```{r}
+dbWriteTable(dbcon2, "StarSchema_Article_Fact", Article_Fact.df, append = TRUE, 
+             row.names = FALSE)
+```
+
+
+# Showing that database query works using SELECT statement
+
+```{sql connection=dbcon2}
+SELECT * FROM StarSchema_Author
+```
+
+```{sql connection=dbcon2}
+SELECT * FROM StarSchema_Publication_Date
+```
+
+```{sql connection=dbcon2}
+SELECT * FROM StarSchema_Journal
+```
+
+```{sql connection=dbcon2}
+SELECT * FROM StarSchema_Article
+
+```
+
+```{sql connection=dbcon2}
+SELECT * FROM StarSchema_Article_Fact
+
+```
+
+# Adding a snapshot for database to show tables and a query
+
+![Screenshot of database inspected in SQLite](/Users/mmorshed/Desktop/database_screenshot.png)
+
+
+# PART 2 Q2
+ERD link from Part1 contains ERD for Part 2 Q2 also.
+
+![Part2 Ques2: Summary Tables](/Users/mmorshed/Desktop/erd3.png)
+
+
+# Using the database created and loaded with data in part 2 Q1, summary tables are created for Part 2 Q2
+```{r}
+sqlCmd = "SELECT author_id, year, quarter, count(distinct(article_id)) as number_of_articles 
+FROM StarSchema_Article_Fact 
+NATURAL JOIN StarSchema_Publication_Date
+GROUP BY author_id, year, quarter
+ORDER BY author_id, year, quarter"
+summary_author_year_quarter = dbGetQuery(dbcon2, sqlCmd)
+summary_author_year_quarter
+```
+
+```{r}
+sqlCmd2 = "SELECT author_id, year,quarter = 0 as quarter, count(distinct(article_id)) as number_of_articles
+FROM StarSchema_Article_Fact 
+NATURAL JOIN StarSchema_Publication_Date
+GROUP BY author_id, year
+ORDER BY author_id, year"
+summary_author_year = dbGetQuery(dbcon2, sqlCmd2)
+summary_author_year
+```
+
+```{r}
+sqlCmd3 = "SELECT author_id, year = 0 as year,quarter, count(distinct(article_id)) as number_of_articles
+FROM StarSchema_Article_Fact 
+NATURAL JOIN StarSchema_Publication_Date
+GROUP BY author_id, quarter
+ORDER BY author_id, year, quarter"
+summary_author_quarter = dbGetQuery(dbcon2, sqlCmd3)
+summary_author_quarter
+```
+
+
+# Using our summary table "summary_author", we can find : 
+# 1. Number of articles published by an author in a given year (where quarter = 0)
+# 2. Number of articles published by an author in a given quarter (where year = 0)
+# 3. Number of articles published by an author in a given quarter of a given year
+```{r}
+total <- nrow(summary_author_year) + nrow(summary_author_year_quarter) + nrow(summary_author_quarter)
+summary_author <- data.frame (id = integer(),
+                          stringsAsFactors = F)
+for (i in 1:total) {
+  summary_author[i,1] <- i
+}
+summary_author2 <- rbind(summary_author_year_quarter, summary_author_year, summary_author_quarter)
+
+summary_author <- cbind(summary_author, summary_author2)
+summary_author
+```
+
+
+# Example: This functions searches for the number of articles published by a particular author in a given year.
+```{r}
+search_by_authorId_by_year <- function(author_id, year) {
+  result = 0
+  for (i in 1:nrow(summary_author)) {
+    if(author_id == summary_author$author_id[i] && year == summary_author$year[i] && summary_author$quarter[i] == 0){
+      result = summary_author$number_of_articles[i];
+    } 
+  }
+  print(result);
+}
+```
+
+```{r}
+search_by_authorId_by_year(1,2012)  # 1
+search_by_authorId_by_year(3,2012)  # 16
+```
+
+
+# Using the database created and loaded with data in part 2 Q1, summary table is created for Part 2 Q2
+
+```{r}
+sqlCmd4 = "SELECT issn, year, quarter, count(distinct(article_id)) as number_of_articles
+FROM StarSchema_Article_Fact 
+NATURAL JOIN StarSchema_Publication_Date
+NATURAL JOIN StarSchema_Journal
+GROUP BY issn, year, quarter
+ORDER BY issn, year, quarter"
+summary_journal_year_quarter = dbGetQuery(dbcon2, sqlCmd4)
+summary_journal_year_quarter
+```
+
+```{r}
+sqlCmd5 = "SELECT issn, year,quarter = 0 as quarter, count(distinct(article_id)) as number_of_articles
+FROM StarSchema_Article_Fact 
+NATURAL JOIN StarSchema_Publication_Date
+NATURAL JOIN StarSchema_Journal
+GROUP BY issn, year
+ORDER BY issn, year"
+summary_journal_year = dbGetQuery(dbcon2, sqlCmd5)
+summary_journal_year
+```
+
+```{r}
+sqlCmd6 = "SELECT issn, year = 0 as year, quarter, count(distinct(article_id)) as number_of_articles
+FROM StarSchema_Article_Fact 
+NATURAL JOIN StarSchema_Publication_Date
+NATURAL JOIN StarSchema_Journal
+GROUP BY issn, quarter
+ORDER BY issn, quarter"
+summary_journal_quarter = dbGetQuery(dbcon2, sqlCmd6)
+summary_journal_quarter
+```
+
+# Using our summary table "summary_journal", we can find : 
+# 1. Number of articles published in a journal in a given year (where quarter = 0)
+# 2. Number of articles published in a journal in a given quarter (where year = 0)
+# 3. Number of articles published in a journal in a given quarter of a given year
+```{r}
+total <- nrow(summary_journal_year) + nrow(summary_journal_year_quarter) + nrow(summary_journal_quarter)
+summary_journal <- data.frame (id = integer(),
+                          stringsAsFactors = F)
+for (i in 1:total) {
+  summary_journal[i,1] <- i
+}
+summary_journal2 <- rbind(summary_journal_year_quarter, summary_journal_year, summary_journal_quarter)
+
+summary_journal <- cbind(summary_journal, summary_journal2)
+summary_journal
+```
+# Example: This functions searches for the number of articles published in a particular journal in a given year.
+```{r}
+search_by_journal_by_year <- function(issn, year) {
+  result = 0
+  for (i in 1:nrow(summary_journal)) {
+    if(issn == summary_journal$issn[i] && year == summary_journal$year[i] && summary_journal$quarter[i] == 0){
+      result = summary_journal$number_of_articles[i];
+    } 
+  }
+  print(result);
+}
+```
+
+```{r}
+search_by_journal_by_year("1097-0142",2012)  # 1
+search_by_journal_by_year("1432-1998",2012)  # 1
+```
+
+
+
+# PART 3
+
+# Author Summary
+```{r}
+#summary_author <- cbind(summary_author, summary_author2)
+df <- subset(summary_author, select = c(author_id, quarter, number_of_articles) )
+df <- df[df$quarter != 0,]
+df
+```
+```{r}
+df2 <-df %>%
+  group_by(quarter) %>%
+  summarise(count=sum(number_of_articles))
+df2
+```
+# This barplot shows the number of articles published by authors/quarter (Quarter = -1 represents the articles for which the data was not complete). The bar plot clearly shows that the maximum number of articles were published in quarter 1. 
+```{r}
+barplot(df2$count,names.arg=df2$quarter,xlab="Quarter",ylab="Number of articles by authors",col="blue",
+main="Number of articles/quarter by authors",border="red")
+```
+```{r}
+summary_author <- summary_author[summary_author$quarter == 0,]
+df3 <- subset(summary_author, select = c(author_id, year, number_of_articles) )
+df3
+```
+```{r}
+df4 <-df3 %>%
+  group_by(year) %>%
+  summarise(count=sum(number_of_articles))
+df4
+```
+
+# This barplot represents the number of articles published by authors/year. The plot clearly shows that the authors published more articles in year 2012. This may be due to the fact that the given data is incomplete and doesn't cover complete record for year 2013. 
+```{r}
+barplot(df4$count,names.arg=df4$year,xlab="Year",ylab="Number of articles by authors",col="blue",
+main="Number of articles/year by authors",border="red")
+```
+
+# This stacked graph shows that author_id = 3 published the maximum number of articles.
+```{r}
+# This plot shows for each author, number of articles per quarter. Quarter = -1 represents the articles 
+# for which the data was not complete
+ggplot(df, aes(fill=quarter, y=number_of_articles, x=author_id)) + 
+    geom_bar(position="stack", stat="identity")
+```
+
+# Example: This functions searches for the number of articles published by a particular author in a given year.
+```{r}
+search_by_authorId_by_year <- function(author_id, year) {
+  result = 0
+  for (i in 1:nrow(summary_author)) {
+    if(author_id == summary_author$author_id[i] && year == summary_author$year[i] && summary_author$quarter[i] == 0){
+      result = summary_author$number_of_articles[i];
+    } 
+  }
+  print(result);
+}
+```
+
+```{r}
+search_by_authorId_by_year(1,2012)  # 1
+search_by_authorId_by_year(3,2012)  # 16
+```
+
+
+
+# Journal Summary
+
+```{r}
+df_j <- summary_journal[summary_journal$year == 0,]
+df_j <- subset(df_j, select = c(issn, quarter, number_of_articles) )
+df_j
+```
+
+```{r}
+df_j <-df_j %>%
+  group_by(quarter) %>%
+  summarise(count=sum(number_of_articles))
+df_j
+```
+
+# This barplot represents the number of articles published in journals/quarter. The plot clearly shows that maximum number of articles were published in quarter1 (Quarter = -1 represents the articles for which the data was not complete)
+```{r}
+barplot(df_j$count,names.arg=df_j$quarter,xlab="Quarter",ylab="Number of articles in journals",col="blue",
+main="Number of articles published in journals/quarter",border="red")
+```
+
+```{r}
+df_j2 <- summary_journal[summary_journal$quarter == 0,]
+df_j2 <- subset(df_j2, select = c(issn, year, number_of_articles) )
+df_j2
+```
+
+```{r}
+df_j2 <-df_j2 %>%
+  group_by(year) %>%
+  summarise(count=sum(number_of_articles))
+df_j2
+```
+
+# This barplot represents the number of articles published in journals/quarter. The plot clearly shows that higher number of articles were published in journals in year 2012 as compared to year 2013. This may be due to the fact that given data is not complete for year 2013. 
+```{r}
+barplot(df_j2$count,names.arg=df_j2$year,xlab="Year",ylab="Number of articles in journals",col="blue",
+main="Number of articles published in journals/year",border="red")
+```
+
+```{r}
+dbDisconnect(dbcon2)
+```
